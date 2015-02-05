@@ -12,6 +12,7 @@
 
 
 import sys
+import os
 import csv
 import argparse
 import codecs
@@ -44,6 +45,66 @@ def transfer_data(data_path):
     with codecs.open('tmp.html', 'wb', encoding='utf-8') as f:
         f.write(content)
 
+
+class AppleHTMLParser(HTMLParser):
+    data_list = []
+    news_tag = False
+    title_tag = False
+    time_tag = False
+    categ_tag = False
+    url = ''
+    date = ''
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'time':
+            self.time_tag = True
+        if tag == 'li' and len(attrs) == 1:
+            if attrs[0][0] == 'class':
+                self.news_tag = True
+        if tag == 'h2' and self.news_tag:
+            self.categ_tag = True
+        if tag == 'font' and self.news_tag:
+            self.title_tag = True
+        if tag == 'a' and self.news_tag:
+            if len(attrs) > 1 and attrs[0][0] == 'href':
+                self.url = 'http://www.appledaily.com.tw' + attrs[0][1]
+                self.data_list.append(self.url)
+
+    def handle_endtag(self, tag):
+        if tag == 'time' and self.time_tag:
+            self.time_tag = False
+        if tag == 'li' and self.news_tag:
+            self.news_tag = False
+        if tag == 'h2' and self.categ_tag:
+            self.categ_tag = False
+        if tag == 'font' and self.title_tag:
+            self.title_tag = False
+
+    def handle_data(self, data):
+        if self.time_tag:
+            if data[0:4] == '2015':
+                year = data.split(' / ')[0]
+                month = data.split(' / ')[1]
+                day = data.split(' / ')[2]
+                self.date = month + '/' + day
+            else:
+                self.data_list.append(self.date + ' ' + data)
+        if self.categ_tag:
+            self.data_list.append(data)
+        if self.title_tag:
+            self.data_list.append(data)
+    
+    def print_data(self):
+        return self.data_list
+    
+    def clear_data(self):
+        del self.data_list[:]
+        self.news_tag = False
+        self.title_tag = False
+        self.date_tag = False
+        self.categ_tag = False
+        self.url = ''
+        self.date = ''
 
 class UdnHTMLParser(HTMLParser):
     data_list = []
@@ -92,6 +153,14 @@ class UdnHTMLParser(HTMLParser):
       
     def print_data(self):
         return self.data_list
+    
+    def clear_data(self):
+        del self.data_list[:]
+        self.news_tag = False
+        self.title_tag = False
+        self.date_tag = False
+        self.categ_tag = False
+        self.url = ''
 
 
 def read_webpage(input_file, newspaper):
@@ -100,10 +169,13 @@ def read_webpage(input_file, newspaper):
 
     if newspaper == 'udn':
         parser = UdnHTMLParser()
-    
+    elif newspaper == 'apple':
+        parser = AppleHTMLParser()
+
     parser.feed(text)
 
-    output_text = parser.print_data()
+    output_text = parser.print_data()[:]
+    parser.clear_data()
     return output_text
 
 
@@ -119,7 +191,8 @@ def remove_empty(data_list):
     return data_list
 
 
-def write_list(output_text, output_file):
+def write_list(output_text, output_file, newspaper):
+
     fp = open(output_file, 'w')
     #fp = open(output_file, 'a') #if append
     #fieldnames = ['index', 'date', 'time', 'catalog', 'title', 'link'] #remove index
@@ -127,24 +200,33 @@ def write_list(output_text, output_file):
     output_list = []
     tmp_dict = {}
     
+    #line_mod: [0]link [1]title [2]catalog [3]date&time
+    if newspaper == 'udn':
+        line_header = [0, 1, 2, 3]
+    elif newspaper == 'apple':
+        line_header = [0, 3, 2, 1]
+
     line_num = 0
     index = 0
     for text in output_text:
         line_mod = line_num % 4
-        if line_mod == 0:
+        if line_mod == line_header[0]:
             #tmp_dict['index'] = line_num / 4 + 1 #remove index
             tmp_dict['link'] = text
-        if line_mod == 1:
+        if line_mod == line_header[1]:
             tmp_dict['title'] = text
-        if line_mod == 2:
+        if line_mod == line_header[2]:
             tmp_dict['catalog'] = text
-        if line_mod == 3:
+        if line_mod == line_header[3]:
             tmp_dict['date'] = text.split(' ')[0]
             tmp_dict['time'] = text.split(' ')[1]
+        if line_mod == 3:
             output_list.append(tmp_dict)
             tmp_dict = {}
         line_num += 1
 
+    output_list = delete_same(output_list)
+    pprint(output_list)
     writer = csv.DictWriter(fp, fieldnames=fieldnames, delimiter=';')
     writer.writeheader()
     for data in output_list:
@@ -152,18 +234,23 @@ def write_list(output_text, output_file):
 
 def main():
     parser = argparse.ArgumentParser(description='Crawl the title from realtim news.')
-    parser.add_argument('input_file', help='the file name of the html file')
+    parser.add_argument('input_folder', help='the folder name of the html files')
     parser.add_argument('newspaper', help='specify the name of the newspaper')
     args = parser.parse_args()
 
     #transfer_data(args.input_file)
+    #output_text = read_webpage('tmp.html', args.newspaper)
 
     #output_file = args.input_file[0:(-1)*len('.html')]+'_list.csv'
-    output_file = join('data', args.newspaper+'_list.csv') 
+    output_file = args.input_folder + '_list.csv'
 
-    #output_text = read_webpage('tmp.html', args.newspaper)
-    output_text = read_webpage(args.input_file, args.newspaper)
-    write_list(remove_empty(output_text), output_file)
+    files = [f for f in os.listdir(args.input_folder) if os.path.isfile(join(args.input_folder, f))] 
+    output_text = []
+    for f in files:
+        tmp_text = read_webpage(join(args.input_folder, f), args.newspaper)
+        output_text = output_text + tmp_text
+   
+    write_list(remove_empty(output_text), output_file, args.newspaper)
 
 
 if __name__ == '__main__':
