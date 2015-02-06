@@ -11,18 +11,19 @@
 #############################################################
 
 
-import sys
 import os
 import csv
 import argparse
 import codecs
 import pycurl
-import uniout
 from os.path import join
 from HTMLParser import HTMLParser
 from htmlentitydefs import name2codepoint
 from pprint import pprint
 
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 def delete_same(noun_list):
     seen=[]
@@ -166,9 +167,6 @@ class UdnHTMLParser(HTMLParser):
 class LtnHTMLParser(HTMLParser):
     data_list = []
     news_tag = False
-    title_tag = False
-    date_tag = False
-    categ_tag = False
     
     def handle_starttag(self, tag, attrs):
         if tag == 'li' and len(attrs) == 1:
@@ -197,9 +195,59 @@ class LtnHTMLParser(HTMLParser):
     def clear_data(self):
         del self.data_list[:]
         self.news_tag = False
+
+class EttodayHTMLParser(HTMLParser):
+    data_list = []
+    page_tag = False
+    title_tag = False
+    data_seen = False
+    tmp_text = ''
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'div' and len(attrs) == 2:
+            if attrs[0][0] == 'class' and attrs[0][1] == 'part_list_1':
+                self.page_tag = True
+        if tag == 'a' and self.page_tag:
+            self.title_tag = True
+            for attr in attrs:
+                if attr[0] == 'href':
+                    url = attr[1]
+                    self.data_list.append(url)
+                if attr[0] == 'onclick':
+                    title = attr[1].split(',')[2][1:-1]
+                    #self.data_list.append(title)
+
+    def handle_endtag(self, tag):
+        if tag == 'div' and self.page_tag:
+            self.page_tag = False
+        if tag == 'a' and self.title_tag:
+            self.title_tag = False
+            self.data_seen = False
+            if self.tmp_text != '':
+                self.data_list.append(self.tmp_text)
+                self.tmp_text = ''
+
+    def handle_data(self, data):
+        if self.page_tag and not self.title_tag:
+            data = data.strip()
+            if data != '' and data[0] == '[' and data[-1] == ']':
+                data = data[1:-1]
+            if data != '':
+                self.data_list.append(data)
+        if self.title_tag:
+            if self.data_seen:
+                self.tmp_text += data
+            else:
+                self.data_seen = True
+                self.tmp_text = data
+
+    def print_data(self):
+        return self.data_list
+    
+    def clear_data(self):
+        del self.data_list[:]
+        self.page_tag = False
         self.title_tag = False
-        self.date_tag = False
-        self.categ_tag = False
 
 def read_webpage(input_file, newspaper):
     fp = open(input_file, 'r')
@@ -211,6 +259,8 @@ def read_webpage(input_file, newspaper):
         parser = AppleHTMLParser()
     elif newspaper == 'ltn':
         parser = LtnHTMLParser()
+    elif newspaper == 'ettoday':
+        parser = EttodayHTMLParser()
 
     parser.feed(text)
 
@@ -233,8 +283,6 @@ def remove_empty(data_list):
 
 def write_list(output_text, output_file, newspaper):
 
-    #pprint(output_text)
-    
     fp = open(output_file, 'w')
     
     #fp = open(output_file, 'a') #if append
@@ -250,6 +298,8 @@ def write_list(output_text, output_file, newspaper):
     elif newspaper == 'apple':
         line_header = [0, 3, 2, 1]
     elif newspaper == 'ltn':
+        line_header = [2, 3, 1, 0]
+    elif newspaper == 'ettoday':
         line_header = [2, 3, 1, 0]
 
     line_num = 0
