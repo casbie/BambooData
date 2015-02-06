@@ -117,7 +117,7 @@ class UdnHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == 'tr':
             for attr in attrs:
-                if attr[0] == 'style' and attr[1] == 'table-row':
+                if attr[0] == 'style' and attr[1] == 'table-row' or attr[1] == 'display:none':
                     self.news_tag = True
         if tag == 'a' and self.news_tag:
             for attr in attrs:
@@ -163,6 +163,44 @@ class UdnHTMLParser(HTMLParser):
         self.url = ''
 
 
+class LtnHTMLParser(HTMLParser):
+    data_list = []
+    news_tag = False
+    title_tag = False
+    date_tag = False
+    categ_tag = False
+    
+    def handle_starttag(self, tag, attrs):
+        if tag == 'li' and len(attrs) == 1:
+            if attrs[0][0] == 'class' and attrs[0][1] == 'lipic':
+                self.news_tag = True
+        if tag == 'a' and len(attrs) == 2 and self.news_tag:
+            if attrs[0][0] == 'href':
+                url = 'http://news.ltn.com.tw' + attrs[0][1]
+                self.data_list.append(url)
+        if tag == 'a' and len(attrs) == 1 and self.news_tag:
+            if attrs[0][0] == 'href':
+                category = attrs[0][1][len('/list/'):]
+                self.data_list.append(category)
+
+    def handle_endtag(self, tag):
+        if tag == 'li' and self.news_tag:
+            self.news_tag = False
+    
+    def handle_data(self, data):
+        if self.news_tag:
+            self.data_list.append(data)
+    
+    def print_data(self):
+        return self.data_list
+    
+    def clear_data(self):
+        del self.data_list[:]
+        self.news_tag = False
+        self.title_tag = False
+        self.date_tag = False
+        self.categ_tag = False
+
 def read_webpage(input_file, newspaper):
     fp = open(input_file, 'r')
     text = fp.read()
@@ -171,6 +209,8 @@ def read_webpage(input_file, newspaper):
         parser = UdnHTMLParser()
     elif newspaper == 'apple':
         parser = AppleHTMLParser()
+    elif newspaper == 'ltn':
+        parser = LtnHTMLParser()
 
     parser.feed(text)
 
@@ -193,9 +233,13 @@ def remove_empty(data_list):
 
 def write_list(output_text, output_file, newspaper):
 
+    #pprint(output_text)
+    
     fp = open(output_file, 'w')
+    
     #fp = open(output_file, 'a') #if append
     #fieldnames = ['index', 'date', 'time', 'catalog', 'title', 'link'] #remove index
+    
     fieldnames = ['date', 'time', 'catalog', 'title', 'link']
     output_list = []
     tmp_dict = {}
@@ -205,6 +249,8 @@ def write_list(output_text, output_file, newspaper):
         line_header = [0, 1, 2, 3]
     elif newspaper == 'apple':
         line_header = [0, 3, 2, 1]
+    elif newspaper == 'ltn':
+        line_header = [2, 3, 1, 0]
 
     line_num = 0
     index = 0
@@ -226,11 +272,11 @@ def write_list(output_text, output_file, newspaper):
         line_num += 1
 
     output_list = delete_same(output_list)
-    pprint(output_list)
     writer = csv.DictWriter(fp, fieldnames=fieldnames, delimiter=';')
     writer.writeheader()
     for data in output_list:
         writer.writerow(data)
+
 
 def main():
     parser = argparse.ArgumentParser(description='Crawl the title from realtim news.')
