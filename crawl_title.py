@@ -249,6 +249,65 @@ class EttodayHTMLParser(HTMLParser):
         self.page_tag = False
         self.title_tag = False
 
+
+class ChinatimesHTMLParser(HTMLParser):
+    
+    data_list = []
+    news_tag = False
+    title_tag = False
+    categ_tag = False
+    data_seen = False
+    tmp_text = ''
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'li' and len(attrs) == 1:
+            if attrs[0][0] == 'class' and len(attrs[0][1]) >= len('clear-fix'):
+                if attrs[0][1][0:len('clear-fix')] == 'clear-fix':
+                    self.news_tag = True
+        if tag == 'a' and len(attrs) == 2 and self.news_tag:
+            self.title_tag = True
+            for attr in attrs:
+                if attr[0] == 'href':
+                    url = 'http://www.chinatimes.com' + attr[1]
+                    self.data_list.append(url)
+        if tag == 'div' and len(attrs) == 1 and self.news_tag:
+            if attrs[0][0] == 'class' and attrs[0][1] == 'kindOf':
+                self.categ_tag = True
+        if tag == 'time' and self.news_tag and len(attrs) == 1:
+            if attrs[0][0] == 'datetime':
+                time = attrs[0][1]
+                self.data_list.append(time)
+
+    def handle_endtag(self, tag):
+        if tag == 'li' and self.news_tag:
+            self.news_tag = False
+        if tag == 'a' and self.title_tag:
+            self.title_tag = False
+            self.data_seen = False
+            self.data_list.append(self.tmp_text)
+            tmp_text = ''
+        if tag == 'a' and self.categ_tag:
+            self.categ_tag = False
+
+    def handle_data(self, data):
+        if self.title_tag:
+            if self.data_seen:
+                self.tmp_text += data.strip()
+            else:
+                self.data_seen = True
+                self.tmp_text = data.strip()
+        if self.categ_tag:
+            if data.strip() != '':
+                self.data_list.append(data.strip())
+
+    def print_data(self):
+        return self.data_list
+    
+    def clear_data(self):
+        del self.data_list[:]
+
+
+
 def read_webpage(input_file, newspaper):
     fp = open(input_file, 'r')
     text = fp.read()
@@ -261,6 +320,8 @@ def read_webpage(input_file, newspaper):
         parser = LtnHTMLParser()
     elif newspaper == 'ettoday':
         parser = EttodayHTMLParser()
+    elif newspaper == 'chinatimes':
+        parser = ChinatimesHTMLParser()
 
     parser.feed(text)
 
@@ -301,10 +362,14 @@ def write_list(output_text, output_file, newspaper):
         line_header = [2, 3, 1, 0]
     elif newspaper == 'ettoday':
         line_header = [2, 3, 1, 0]
+    elif newspaper == 'chinatimes':
+        line_header = [0, 1, 3, 2]
 
     line_num = 0
     index = 0
     for text in output_text:
+        #import uniout
+        #print text
         line_mod = line_num % 4
         if line_mod == line_header[0]:
             #tmp_dict['index'] = line_num / 4 + 1 #remove index
