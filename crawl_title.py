@@ -53,6 +53,8 @@ class AppleHTMLParser(HTMLParser):
     title_tag = False
     time_tag = False
     categ_tag = False
+    data_seen = False
+    tmp_text = ''
     url = ''
     date = ''
 
@@ -80,6 +82,10 @@ class AppleHTMLParser(HTMLParser):
             self.categ_tag = False
         if tag == 'font' and self.title_tag:
             self.title_tag = False
+            self.data_seen = False
+            if self.tmp_text != '':
+                self.data_list.append(self.tmp_text)
+                self.tmp_text = ''
 
     def handle_data(self, data):
         if self.time_tag:
@@ -93,7 +99,11 @@ class AppleHTMLParser(HTMLParser):
         if self.categ_tag:
             self.data_list.append(data)
         if self.title_tag:
-            self.data_list.append(data)
+            if self.data_seen:
+                self.tmp_text += data
+            else:
+                self.data_seen = True
+                self.tmp_text = data
     
     def print_data(self):
         return self.data_list
@@ -113,7 +123,9 @@ class UdnHTMLParser(HTMLParser):
     title_tag = False
     date_tag = False
     categ_tag = False
+    data_seen = False
     url = ''
+    tmp_text = ''
 
     def handle_starttag(self, tag, attrs):
         if tag == 'tr':
@@ -138,6 +150,10 @@ class UdnHTMLParser(HTMLParser):
             self.news_tag = False
         if tag == 'a' and self.title_tag:
             self.title_tag = False
+            self.data_seen = False
+            if self.tmp_text != '':
+                self.data_list.append(self.tmp_text)
+                self.tmp_text = ''
         if tag == 'td':
             if self.categ_tag:
                 self.categ_tag = False
@@ -146,7 +162,12 @@ class UdnHTMLParser(HTMLParser):
 
     def handle_data(self, data):
         if self.news_tag and self.title_tag:
-            self.data_list.append(data.strip())
+            if self.data_seen:
+                self.tmp_text += data
+            else:
+                self.data_seen = True
+                self.tmp_text = data
+            
         if self.news_tag and self.categ_tag:
             self.data_list.append(data.strip())
         if self.news_tag and self.date_tag:
